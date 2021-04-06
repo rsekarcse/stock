@@ -1,0 +1,288 @@
+<html>
+
+<head>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <script src="data.js"></script>
+    <script src="https://code.highcharts.com/highcharts.js"></script>
+    <script src="https://code.highcharts.com/modules/exporting.js"></script>
+    <script src="https://code.highcharts.com/modules/export-data.js"></script>
+    <script src="https://code.highcharts.com/modules/accessibility.js"></script>
+    <script src="https://cdn.datatables.net/1.10.24/js/jquery.dataTables.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.10.24/css/jquery.dataTables.min.css">
+    <script type="application/javascript">
+
+        var CSV_DATA;
+        var INDUSTRY_PIE_CHART;
+        var INDUSTRY_PIE_CHART_DATA;
+        var STOCK_PIE_CHART;
+        var STOCK_PIE_CHART_DATA;
+
+        var STOCK_TABLE_DATA;
+        var INDUSTRY_TABLE_DATA;
+
+        var TOTAL = {
+            'amount': 0,
+            'pl': 0,
+            'netPercent': 0,
+            'dayChangePercent': 0
+        }
+
+        $(document).ready(function () {
+            console.log("Document ready");
+            handleCSVFile();
+            populateIndustryPieChart();
+            populateStockPieChart();
+            // initStockTable();
+            console.log("Document ready complete");
+        });
+
+        function initStockTable() {
+            var table = $('#stockTable').DataTable({
+                columnDefs: [{
+                    targets: [0],
+                    orderData: [0, 1]
+                }, {
+                    targets: [1],
+                    orderData: [1, 0]
+                }, {
+                    targets: [4],
+                    orderData: [4, 0]
+                }],
+                "paging": false
+            });
+
+            $('a.toggle-vis').on('click', function (e) {
+                e.preventDefault();
+
+                // Get the column API object
+                var column = table.column($(this).attr('data-column'));
+
+                // Toggle the visibility
+                column.visible(!column.visible());
+            });
+        }
+        function handleCSVFile() {
+            $("#filename").change(function (e) {
+                console.log("CSV upload handler");
+                var ext = $("input#filename").val().split(".").pop().toLowerCase();
+                if ($.inArray(ext, ["csv"]) == -1) {
+                    alert('Upload CSV');
+                    return false;
+                }
+
+                if (e.target.files != undefined) {
+                    var reader = new FileReader();
+                    reader.onload = function (e) {
+                        console.log("reader.onload: " + e);
+                        CSV_DATA = e.target.result;
+                        processCsvData(e.target.result);
+                        processDataForTable(e.target.result);
+                    };
+                    reader.readAsText(e.target.files.item(0));
+                }
+                return false;
+            });
+        }
+        var tempIndustryDict;
+        function processCsvData(csvData) {
+            var lines = csvData.split('\n');
+            INDUSTRY_PIE_CHART_DATA = [];
+            STOCK_PIE_CHART_DATA = [];
+            tempIndustryDict = {};
+            for (i = 1; i < lines.length; ++i) {
+                // $('#dataDiv').append('<br>' + lines[i]);
+                var rowData = lines[i].split(',');
+                if (rowData[0].trim()) {
+                    var dataObj = { 'name': rowData[0], 'y': parseFloat(rowData[4]) };
+                    STOCK_PIE_CHART_DATA.push(dataObj);
+                    var industryObj;
+                    var industryName = STOCK_CATERGORY[rowData[0]];
+                    if (tempIndustryDict.hasOwnProperty(industryName)) {
+                        industryObj = tempIndustryDict[industryName];
+                    } else {
+                        tempIndustryDict[industryName] = { 'name': industryName, 'y': 0 };
+                        industryObj = tempIndustryDict[industryName];
+                    }
+                    industryObj['y'] = industryObj['y'] + parseFloat(rowData[4]);
+                }
+            }
+            for (var item in tempIndustryDict) {
+                INDUSTRY_PIE_CHART_DATA.push(tempIndustryDict[item]);
+            }
+
+            INDUSTRY_PIE_CHART.series[0].setData(INDUSTRY_PIE_CHART_DATA);
+            STOCK_PIE_CHART.series[0].setData(STOCK_PIE_CHART_DATA);
+        }
+
+        function processDataForTable(csvData) {
+            STOCK_TABLE_DATA = [];
+            var tableRowHtml = "";
+            var lines = csvData.split('\n');
+
+            var toggleRow = getToggleColumn("industry", 0);;
+            var colNameData = lines[0].split(',');
+
+            for (i = 0; i < colNameData.length; ++i) {
+                toggleRow = toggleRow + getToggleColumn(colNameData[i], i + 1);
+            }
+            $("#toggleColumn").append(toggleRow);
+
+            for (i = 1; i < lines.length; ++i) {
+                var rowData = lines[i].split(',');
+                if (!rowData[0].trim()) {
+                    break;
+                }
+                var industryName = STOCK_CATERGORY[rowData[0]];
+                STOCK_TABLE_DATA.push({
+                    'industry': industryName,
+                    'instrument': rowData[0],
+                    'qty': rowData[0],
+                    'avgCost': rowData[0],
+                    'ltp': rowData[0],
+                    'currValue': rowData[0],
+                    'pl': rowData[0],
+                    'netChg': rowData[0],
+                    'dayChg': rowData[0]
+                });
+                tableRowHtml = tableRowHtml + getRow(industryName, rowData);
+            }
+            $('#stockTable tbody').append(tableRowHtml);
+            initStockTable();
+        }
+
+        function getCol(colValue) {
+            return '<td>' + colValue + '</td>';
+        }
+
+        function getToggleColumn(name, index) {
+            return '<a class="toggle-vis toggle-span" data-column="' + index + '">' + name + '</a>';
+        }
+        function getRow(industry, rowData) {
+            var row = getCol(industry);
+            for (var i in rowData) {
+                row = row + getCol(rowData[i]);
+            }
+            return '<tr>' + row + '</tr>';
+
+        }
+
+        function populateIndustryPieChart() {
+            INDUSTRY_PIE_CHART = Highcharts.chart('industryPieChartContainer', {
+                chart: {
+                    plotBackgroundColor: null,
+                    plotBorderWidth: null,
+                    plotShadow: false,
+                    type: 'pie'
+                },
+                title: {
+                    text: 'Browser market shares in January, 2018'
+                },
+                tooltip: {
+                    pointFormat: '{series.name}: <b>{point.percentage:.1f}%</b>'
+                },
+                accessibility: {
+                    point: {
+                        valueSuffix: '%'
+                    }
+                },
+                plotOptions: {
+                    pie: {
+                        allowPointSelect: true,
+                        cursor: 'pointer',
+                        dataLabels: {
+                            enabled: true,
+                            format: '<b>{point.name}</b>: {point.percentage:.1f} %'
+                        }
+                    }
+                },
+                series: [{
+                    name: 'Brands',
+                    colorByPoint: true,
+                    data: INDUSTRY_PIE_CHART_DATA
+                }]
+            });
+        }
+
+        function populateStockPieChart() {
+            STOCK_PIE_CHART = Highcharts.chart('stockPieChartContainer', {
+                chart: {
+                    plotBackgroundColor: null,
+                    plotBorderWidth: null,
+                    plotShadow: false,
+                    type: 'pie'
+                },
+                title: {
+                    text: 'Browser market shares in January, 2018'
+                },
+                tooltip: {
+                    pointFormat: '{series.name}: <b>{point.percentage:.1f}%</b>'
+                },
+                accessibility: {
+                    point: {
+                        valueSuffix: '%'
+                    }
+                },
+                plotOptions: {
+                    pie: {
+                        allowPointSelect: true,
+                        cursor: 'pointer',
+                        dataLabels: {
+                            enabled: true,
+                            format: '<b>{point.name}</b>: {point.percentage:.1f} %'
+                        }
+                    }
+                },
+                series: [{
+                    name: 'Brands',
+                    colorByPoint: true,
+                    data: STOCK_PIE_CHART_DATA
+                }]
+            });
+        }
+
+
+    </script>
+</head>
+
+<body>
+    <input type="file" name="filename" id="filename">
+    <div id="dataDiv"></div>
+    <table style="width: 100%;">
+        <tr>
+            <td style="width: 50%;">
+                <figure class="highcharts-figure">
+                    <div id="industryPieChartContainer"></div>
+                </figure>
+            </td>
+            <td style="width: 50%;">
+                <figure class="highcharts-figure">
+                    <div id="stockPieChartContainer"></div>
+                </figure>
+            </td>
+
+        </tr>
+    </table>
+    <div id="toggleColumn">
+
+    </div>
+    <table id="stockTable" class="display" style="width:100%">
+        <thead>
+            <tr>
+                <th>Industry</th>
+                <th>Instrument</th>
+                <th>Qty</th>
+                <th>AvgCost</th>
+                <th>LTP</th>
+                <th>CurrVal</th>
+                <th>PL</th>
+                <th>NetChg</th>
+                <th>DayChg</th>
+            </tr>
+        </thead>
+        <tbody>
+        </tbody>
+    </table>
+
+</body>
+
+</html>
